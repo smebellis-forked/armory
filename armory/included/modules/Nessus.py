@@ -1,4 +1,4 @@
-from ..ModuleTemplate import ModuleTemplate
+from armory.included.ModuleTemplate import ModuleTemplate
 from armory.database.repositories import (
     BaseDomainRepository,
     DomainRepository,
@@ -8,9 +8,9 @@ from armory.database.repositories import (
     CVERepository,
     ScopeCIDRRepository,
 )
-from ..utilities.color_display import display, display_new, display_error
-from ..utilities.nessus import NessusRequest
-from ..utilities.sort_ranges import merge_ranges
+from armory.included.utilities.color_display import display, display_new, display_error
+from armory.included.utilities.nessus import NessusRequest
+from armory.included.utilities.sort_ranges import merge_ranges
 import json
 import os
 import requests
@@ -67,7 +67,12 @@ class Module(ModuleTemplate):
             help="Path to store downloaded file (Default: Nessus)",
             default=self.name,
         )
+        self.options.add_argument(
+            "--disable_mitre",
+            help="Disable mitre CVE data gathering.",
+            action="store_true",
 
+        )
     def run(self, args):
         if args.import_file:
             for nFile in args.import_file:
@@ -128,7 +133,7 @@ class Module(ModuleTemplate):
                     args.username,
                     args.password,
                     args.host,
-                    proxies={"https": "127.0.0.1:8080"},
+                    
                 )
 
                 if args.output_path[0] == "/":
@@ -293,6 +298,7 @@ class Module(ModuleTemplate):
             proto = tag.get("protocol")
             port = tag.get("port")
             svc_name = tag.get("svc_name").replace("?", "")
+            plugin_output = []
 
             tmpPort = proto + "/" + port
             if tmpPort.lower() == "tcp/443":
@@ -308,106 +314,132 @@ class Module(ModuleTemplate):
             else:
                 portName = svc_name
 
-            if "general" not in portName:
-                created, db_port = self.Port.find_or_create(
-                    port_number=port, status="open", proto=proto, ip_address_id=ip.id
-                )
+            created, db_port = self.Port.find_or_create(
+                port_number=port, status="open", proto=proto, ip_address_id=ip.id
+            )
 
-                if db_port.service_name == "http":
-                    if portName == "https":
-                        db_port.service_name = portName
-                elif db_port.service_name == "https":
-                    pass
-                else:
+            if db_port.service_name == "http":
+                if portName == "https":
                     db_port.service_name = portName
+            elif db_port.service_name == "https":
+                pass
+            else:
+                db_port.service_name = portName
+            db_port.save()
+
+            if tag.get("pluginID") == "56984":
+                severity = 1
+            elif tag.get("pluginID") == "11411":
+                severity = 3
+            else:
+                severity = int(tag.get("severity"))
+
+            findingName = tag.get("pluginName")
+            description = tag.find("description").text
+            
+            
+
+            if tag.find("solution") is not None and tag.find("solution") != "n/a":
+                solution = tag.find("solution").text
+            else:
+                solution = "No Remediation From Nessus"
+
+            nessCheck = self.nessCheckPlugin(tag)
+
+            if nessCheck:
+                if not db_port.info:
+                    db_port.info = {findingName: nessCheck}
+                else:
+                    db_port.info[findingName] = nessCheck
+
                 db_port.save()
 
-                if tag.get("pluginID") == "56984":
-                    severity = 1
-                elif tag.get("pluginID") == "11411":
-                    severity = 3
-                else:
-                    severity = int(tag.get("severity"))
+            if tag.find("exploit_available") is not None:
+                exploitable = True
 
-                findingName = tag.get("pluginName")
-                description = tag.find("description").text
+            metasploits = tag.findall("metasploit_name")
+            if metasploits:
+                vuln_refs["metasploit"] = []
+                for tmp in metasploits:
+                    vuln_refs["metasploit"].append(tmp.text)
 
-                if tag.find("solution") is not None and tag.find("solution") != "n/a":
-                    solution = tag.find("solution").text
-                else:
-                    solution = "No Remediation From Nessus"
+            edb_id = tag.findall("edb-id")
+            if edb_id:
+                vuln_refs["edb-id"] = []
+                for tmp in edb_id:
+                    vuln_refs["edb-id"].append(tmp.text)
 
-                nessCheck = self.nessCheckPlugin(tag)
+            tmpcves = tag.findall("cve")
+            for c in tmpcves:
+                if c.text not in cves:
+                    cves.append(c.text)
 
-                if nessCheck:
-                    if not db_port.info:
-                        db_port.info = {findingName: nessCheck}
+            cwe_ids = [c.text for c in tag.findall("cwe")]
+            references = [c.text for c in tag.findall("see_also")]
+
+            if not self.Vulnerability.find(name=findingName):
+                created, db_vuln = self.Vulnerability.find_or_create(
+                    name=findingName,
+                    severity=severity,
+                    description=description,
+                    remediation=solution,
+                )
+                db_vuln.ports.append(db_port)
+                db_vuln.exploitable = exploitable
+                if exploitable:
+                    display_new("exploit avalable for " + findingName)
+
+                if vuln_refs:
+                    db_vuln.exploit_reference = vuln_refs
+
+            else:
+                db_vuln = self.Vulnerability.find(name=findingName)
+                db_vuln.ports.append(db_port)
+                db_vuln.exploitable = exploitable
+                if vuln_refs:
+                    if db_vuln.exploit_reference is not None:
+                        for key in vuln_refs.keys():
+                            if key not in db_vuln.exploit_reference.keys():
+                                db_vuln.exploit_reference[key] = vuln_refs[key]
+                            else:
+                                for ref in vuln_refs[key]:
+                                    if ref not in db_vuln.exploit_reference[key]:
+                                        db_vuln.exploit_reference[key].append(ref)
                     else:
-                        db_port.info[findingName] = nessCheck
-
-                    db_port.save()
-
-                if tag.find("exploit_available") is not None:
-                    # print "\nexploit avalable for", findingName
-                    exploitable = True
-
-                metasploits = tag.findall("metasploit_name")
-                if metasploits:
-                    vuln_refs["metasploit"] = []
-                    for tmp in metasploits:
-                        vuln_refs["metasploit"].append(tmp.text)
-
-                edb_id = tag.findall("edb-id")
-                if edb_id:
-                    vuln_refs["edb-id"] = []
-                    for tmp in edb_id:
-                        vuln_refs["edb-id"].append(tmp.text)
-
-                tmpcves = tag.findall("cve")
-                for c in tmpcves:
-                    if c.text not in cves:
-                        cves.append(c.text)
-
-                if not self.Vulnerability.find(name=findingName):
-                    created, db_vuln = self.Vulnerability.find_or_create(
-                        name=findingName,
-                        severity=severity,
-                        description=description,
-                        remediation=solution,
-                    )
-                    db_vuln.ports.append(db_port)
-                    db_vuln.exploitable = exploitable
-                    if exploitable:
-                        display_new("exploit avalable for " + findingName)
-
-                    if vuln_refs:
                         db_vuln.exploit_reference = vuln_refs
+            db_vuln.meta['CWEs'] = cwe_ids
+            db_vuln.meta['Refs'] = references
+            
+            if tag.find("plugin_output") is not None:
+                
+                plugin_output = tag.find("plugin_output").text
+                if not db_vuln.meta.get('plugin_output', False):
+                    db_vuln.meta['plugin_output'] = {}
+                if not db_vuln.meta['plugin_output'].get(ip.ip_address, False):
+                    db_vuln.meta['plugin_output'][ip.ip_address] = {}
 
-                else:
-                    db_vuln = self.Vulnerability.find(name=findingName)
-                    db_vuln.ports.append(db_port)
-                    db_vuln.exploitable = exploitable
-                    if vuln_refs:
-                        if db_vuln.exploit_reference is not None:
-                            for key in vuln_refs.keys():
-                                if key not in db_vuln.exploit_reference.keys():
-                                    db_vuln.exploit_reference[key] = vuln_refs[key]
-                                else:
-                                    for ref in vuln_refs[key]:
-                                        if ref not in db_vuln.exploit_reference[key]:
-                                            db_vuln.exploit_reference[key].append(ref)
-                        else:
-                            db_vuln.exploit_reference = vuln_refs
+                if not db_vuln.meta['plugin_output'][ip.ip_address].get(port, False):
+                    db_vuln.meta['plugin_output'][ip.ip_address][port] = []
 
+                if plugin_output not in db_vuln.meta['plugin_output'][ip.ip_address][port]:
+                
+                    db_vuln.meta['plugin_output'][ip.ip_address][port].append(plugin_output)
+                
+
+            if not self.args.disable_mitre:
                 for cve in cves:
                     if not self.CVE.find(name=cve):
-                        # print "Gathering CVE information for", cve
                         try:
-                            res = json.loads(
-                                requests.get(
-                                    "http://cve.circl.lu/api/cve/%s" % cve
-                                ).text
-                            )
+                            url = 'https://nvd.nist.gov/vuln/detail//{}'
+                            res = requests.get(url.format(cve)).text
+
+                            cveDescription = res.split('<p data-testid="vuln-description">')[1].split('</p>')[0]
+                            if 'vuln-cvssv3-base-score' in res:
+                                cvss = float(res.split('<span data-testid="vuln-cvssv3-base-score">')[1].split('</span>')[0].strip()) 
+                            else:
+                                cvss = float(res.split('<span data-testid="vuln-cvssv2-base-score">')[1].split('</span>')[0].strip()) 
+
+                        
                             cveDescription = res["summary"]
                             cvss = float(res["cvss"])
 
@@ -437,6 +469,7 @@ class Module(ModuleTemplate):
         display("Reading " + nFile)
         tree = ET.parse(nFile)
         root = tree.getroot()
+        self.args = args
         for ReportHost in root.iter("ReportHost"):
             os = []
             hostname = ""

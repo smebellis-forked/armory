@@ -2,10 +2,12 @@
 
 from armory.database.repositories import IPRepository
 from ..ModuleTemplate import ToolTemplate
-from subprocess import Popen
 from ..utilities import get_urls
 import os
+import re
+import subprocess
 import tempfile
+from distutils.version import LooseVersion
 from time import time
 import sys
 
@@ -15,6 +17,12 @@ if sys.version[0] == "3":
 
 
 class Module(ToolTemplate):
+    """
+    This module uses Gowitness to take a screenshot of any discovered web servers. It can be installed from:
+
+    https://github.com/sensepost/gowitness
+
+    """
 
     name = "Gowitness"
     binary_name = "gowitness"
@@ -134,15 +142,23 @@ class Module(ToolTemplate):
         """
 
         cwd = os.getcwd()
+        ver_pat = re.compile("gowitness:\s?(?P<ver>\d+\.\d+\.\d+)")
+        version = subprocess.getoutput("gowitness version")
+        command_change = LooseVersion("1.0.8")
+        gen_command = ["report", "generate"]
+        m = ver_pat.match(version)
+        if m:
+            if LooseVersion(m.group("ver")) <= command_change:
+                gen_command = ["generate"]
         for cmd in cmds:
             output = cmd["output"]
 
-            cmd = [self.binary, "generate"]
+            cmd = [self.binary] + gen_command
             os.chdir(output)
 
-            Popen(cmd, shell=False).wait()
+            subprocess.Popen(cmd, shell=False).wait()
+            os.chdir(cwd)
 
-        os.chdir(cwd)
         self.IPAddress.commit()
 
     def chunks(self, chunkable, n):

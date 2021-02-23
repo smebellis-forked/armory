@@ -9,6 +9,7 @@ import argcomplete
 import os
 import pkgutil
 import sys
+import pdb
 
 # import pdb # Useful for debugging
 
@@ -341,11 +342,6 @@ _dM_     _dMM_MM_    _MM_  _MM_  _MM_ YMMMMM9 _MM_         M
                                                           d'
                                                       (8),P
                                                        YMM
-
-        Originally By:
-        Daniel Lawson @fang0654
-        Cory Shay @ccsplit
-        Brian Berg @xexzy
 """
     print(banner)
 
@@ -389,16 +385,19 @@ def main():
 
             if custom_path:
                 modules = get_modules(custom_path)
+                mod = [m for m in modules if m.lower() == base_args.module.lower()]
 
-                if base_args.module in modules:
+                if len(mod) > 0:
                     list_module_options(
-                        os.path.join(custom_path, base_args.module), base_args.module
+                        os.path.join(custom_path, mod[0]), mod[0]
                     )
                     sys.exit(0)
             modules = get_modules(os.path.join(PATH, "included/modules"))
-            if base_args.module in modules:
+            mod = [m for m in modules if m.lower() == base_args.module.lower()]            
+            if len(mod) > 0:
+                
                 list_module_options(
-                    ".included.modules." + base_args.module, base_args.module
+                    ".included.modules." + mod[0], mod[0]
                 )
                 sys.exit(0)
 
@@ -415,16 +414,16 @@ def main():
         custom_path = config["PROJECT"].get("custom_modules", None)
         custom_modules = []
         if custom_path:
-            custom_modules = get_modules(custom_path)
+            custom_modules = [m for m in get_modules(custom_path) if m.lower() == base_args.module.lower()]
 
-        modules = get_modules(os.path.join(PATH, "included/modules"))
+        modules = [m for m in get_modules(os.path.join(PATH, "included/modules")) if m.lower() == base_args.module.lower()]
 
-        if base_args.module in custom_modules:
-            Module = load_module(os.path.join(custom_path, base_args.module))
-            run_module(Module, cmd_args, base_args.module)
-        elif base_args.module in modules:
-            Module = load_module(".included.modules.%s" % base_args.module)
-            run_module(Module, cmd_args, base_args.module)
+        if custom_modules:
+            Module = load_module(os.path.join(custom_path, custom_modules[0]))
+            run_module(Module, cmd_args, custom_modules[0])
+        elif modules:
+            Module = load_module(".included.modules.%s" % modules[0])
+            run_module(Module, cmd_args, modules[0])
 
         else:
             print("Module %s is not a valid module." % base_args.module)
@@ -437,17 +436,17 @@ def main():
             custom_path = config["PROJECT"].get("custom_reports", None)
 
             if custom_path:
-                modules = get_modules(custom_path)
+                modules = [r for r in get_modules(custom_path) if r.lower() == base_args.report.lower()]
 
-                if base_args.report in modules:
+                if modules:
                     list_report_options(
-                        os.path.join(custom_path, base_args.report), base_args.report
+                        os.path.join(custom_path, modules[0]), modules[0]
                     )
                     sys.exit(0)
-            modules = get_modules(os.path.join(PATH, "included/reports"))
-            if base_args.report in modules:
+            modules = [r for r in get_modules(os.path.join(PATH, "included/reports")) if r.lower() == base_args.report.lower()]
+            if modules:
                 list_report_options(
-                    ".included.reports." + base_args.report, base_args.report
+                    ".included.reports." + modules[0], modules[0]
                 )
                 sys.exit(0)
 
@@ -464,16 +463,16 @@ def main():
         custom_path = config["PROJECT"].get("custom_reports", None)
         custom_reports = []
         if custom_path:
-            custom_reports = get_modules(custom_path)
+            custom_reports = [r for r in get_modules(custom_path) if r.lower() == base_args.report.lower()]
 
-        reports = get_modules(os.path.join(PATH, "included/reports"))
+        reports = [r for r in get_modules(os.path.join(PATH, "included/reports")) if r.lower() == base_args.report.lower()]
 
-        if base_args.report in custom_reports:
-            Report = load_module(os.path.join(custom_path, base_args.report))
-            run_report(Report, cmd_args, base_args.report)
-        elif base_args.report in reports:
-            Report = load_module(".included.reports.%s" % base_args.report)
-            run_report(Report, cmd_args, base_args.report)
+        if custom_reports:
+            Report = load_module(os.path.join(custom_path, custom_reports[0]))
+            run_report(Report, cmd_args, custom_reports[0])
+        elif reports:
+            Report = load_module(".included.reports.%s" % reports[0])
+            run_report(Report, cmd_args, reports[0])
         else:
             print("Report %s is not a valid report." % base_args.report)
             list_reports()

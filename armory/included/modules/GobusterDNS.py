@@ -6,7 +6,12 @@ import os
 
 
 class Module(ToolTemplate):
+    '''
+    This module uses Gobuster in the DNS brute forcing mode. Gobuster can be installed from:
 
+    https://github.com/OJ/gobuster
+    '''
+    
     name = "GobusterDNS"
     binary_name = "gobuster"
 
@@ -84,8 +89,8 @@ class Module(ToolTemplate):
 
     def build_cmd(self, args):
 
-        cmd = self.binary + " -m dns "
-        cmd += " -o {output} -u {target} "
+        cmd = self.binary + " dns "
+        cmd += " -o {output} -d {target} "
 
         if args.tool_args:
             cmd += args.tool_args
@@ -107,4 +112,6 @@ class Module(ToolTemplate):
             else:
                 display_error("{} not found.".format(output_path))
 
+            created, bd = self.BaseDomain.find_or_create(domain=c['target'])
+            bd.set_tool(self.name)
         self.Domain.commit()

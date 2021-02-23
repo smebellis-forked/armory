@@ -45,6 +45,7 @@ setup(
     packages=find_packages(exclude=["tests"]),
     include_package_data=True,
     install_requires=[
+        "colorama",
         "configparser",
         "sqlalchemy",
         "sqlalchemy_mixins",
@@ -67,9 +68,13 @@ setup(
         "lxml",
         "IPython > 5.0,< 6.0; python_version < '3.1'",
         "IPython; python_version > '3.1'",
+        "python-docx",
+        "termcolor",
+        "jinja2",
     ],
     test_suite="nose.collector",
     tests_require=["nose"],
+    zip_safe=False,
     # Additional groups of dependencies.
     # You can install these with the following syntax:
     # $ pip install -e .[dev,test]

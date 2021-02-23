@@ -16,6 +16,8 @@ class Module(ToolTemplate):
     """
     This module runs DNSRecon on a domain or set of domains. This will extract found DNS entries.
     It can also run over IP ranges, looking for additional domains in the PTR records.
+
+    DNSRecon can be installed from https://github.com/darkoperator/dnsrecon
     """
 
     def __init__(self, db):
@@ -134,7 +136,7 @@ class Module(ToolTemplate):
                 res = json.loads(open(output_path).read())
             except IOError:
                 display_error("DnsRecon failed for {}".format(target))
-
+                continue
             if " -d " in res[0]["arguments"]:
                 created, dbrec = self.Domain.find_or_create(domain=target)
                 dbrec.dns = res
@@ -163,4 +165,9 @@ class Module(ToolTemplate):
                         domain_obj.ip_addresses.append(ip_obj)
                         domain_obj.save()
 
+            if '/' in target:
+                created, bd = self.ScopeCIDR.find_or_create(cidr=target)
+            else:
+                created, bd = self.BaseDomain.find_or_create(domain=target)
+            bd.set_tool(self.name)
         self.Domain.commit()

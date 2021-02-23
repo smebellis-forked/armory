@@ -14,6 +14,11 @@ import time
 
 
 class Module(ToolTemplate):
+    '''
+    This module uses Gobuster in the directory brute forcing mode. Gobuster can be installed from:
+
+    https://github.com/OJ/gobuster
+    '''
 
     name = "GobusterDir"
     binary_name = "gobuster"
@@ -30,6 +35,12 @@ class Module(ToolTemplate):
 
         self.options.add_argument("-u", "--url", help="URL to brute force")
         self.options.add_argument("--file", help="Import URLs from file")
+        self.options.add_argument(
+            "-w", 
+            "--wordlist", 
+            required=True,
+            help="Path to wordlist"
+        )
         self.options.add_argument(
             "-i",
             "--import_database",
@@ -55,6 +66,11 @@ class Module(ToolTemplate):
             for u in urls:
                 if u:
                     targets.append(u)
+
+        if os.path.exists(args.wordlist):
+            wordlist = args.wordlist
+        else:
+            display_error("{} not found.".format(args.wordlist))
 
         if args.import_database:
             if args.rescan:
@@ -92,6 +108,7 @@ class Module(ToolTemplate):
                         .replace("&", "_")
                         + "-dir.txt",  # noqa: W503
                     ),
+                    "wordlist": wordlist,
                 }
             )
 
@@ -99,8 +116,8 @@ class Module(ToolTemplate):
 
     def build_cmd(self, args):
 
-        cmd = self.binary + " -k -m dir "
-        cmd += " -o {output} -u {target} "
+        cmd = self.binary + " dir -k "
+        cmd += " -o {output} -u {target} -w {wordlist} "
 
         if args.tool_args:
             cmd += args.tool_args
